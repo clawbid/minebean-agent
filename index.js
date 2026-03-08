@@ -93,6 +93,8 @@ const STATE = {
   lastAIReco:        null,
   lastDeploy:        null,
   lastFilterResult:  null,
+  currentStrategy:   'SNIPER_SEPI',
+  lastEV:            null,
   totalWins:         0,
   totalRounds:       0,
   roundsSkipped:     0,
@@ -140,13 +142,84 @@ async function fetchRewards() {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  STRATEGY DETECTOR — Sniper Sepi vs Whale Rider
+// ─────────────────────────────────────────────────────────────
+function detectStrategy() {
+  const pool      = parseFloat(STATE.totalDeployed || '0');
+  const beanpot   = parseFloat(STATE.beanpotPool   || '0');
+  const beanPrice = parseFloat(STATE.beanPrice.priceUsd || '0');
+
+  // Whale Rider: pool besar DAN beanpot bernilai tinggi
+  if (pool >= CONFIG.WHALE_THRESHOLD) {
+    // Hitung EV: apakah worth main ikut whale?
+    const avgBlockEth  = pool / 25;
+    const myEth        = avgBlockEth * (CONFIG.WHALE_MATCH_PCT / 100);
+    const myShare      = myEth / (avgBlockEth + myEth);
+    const beanEV       = myShare * beanPrice;           // BEAN value per win
+    const beanpotEV    = (myShare / 777) * beanpot * beanPrice; // jackpot EV
+    const ethCost      = myEth * 3;                     // 3 blocks
+    const ethCostUsd   = ethCost * (beanPrice > 0 ? 1900 : 1900);
+    const totalEV      = (0.12 * beanEV) + beanpotEV;  // 12% win rate × bean value
+
+    STATE.lastEV = { myShare: (myShare*100).toFixed(2), beanEV: beanEV.toFixed(4), totalEV: totalEV.toFixed(4), ethCostUsd: ethCostUsd.toFixed(4) };
+
+    // Force play kalau beanpot besar banget (jackpot worth it)
+    if (beanpot >= CONFIG.BEANPOT_FORCE_ETH) {
+      return { mode: 'WHALE_RIDER', play: true, reason: `🐋🎯 Whale Rider BEANPOT — jackpot ${beanpot.toFixed(0)} BEAN ($${(beanpot*beanPrice).toFixed(0)}) worth the risk!` };
+    }
+    // Skip kalau EV negatif dan beanpot kecil
+    return { mode: 'WHALE_RIDER', play: false, reason: `🐋 Whale pool ${pool.toFixed(3)} ETH, share ${(myShare*100).toFixed(1)}% — EV terlalu kecil, skip` };
+  }
+
+  // Sniper Sepi: pool kecil → filter normal
+  return { mode: 'SNIPER_SEPI', play: null, reason: null };
+}
+
+// ─────────────────────────────────────────────────────────────
 //  CORE DEPLOY LOGIC
 // ─────────────────────────────────────────────────────────────
 async function tryDeploy(gridContract) {
   if (STATE.deployedThisRound) return;
 
-  // ── Step 1: AI pilih blocks ────────────────────────────────
-  let aiBlocks = [0, 12, 24]; // fallback
+  // ── Step 0: Deteksi kondisi market ────────────────────────
+  const strategyCheck = detectStrategy();
+  STATE.currentStrategy = strategyCheck.mode;
+
+  // Whale Rider mode
+  if (strategyCheck.mode === 'WHALE_RIDER') {
+    STATE.lastFilterResult = { play: strategyCheck.play, reason: strategyCheck.reason };
+    log.filter(strategyCheck.reason);
+    if (!strategyCheck.play) {
+      STATE.roundsSkipped++;
+      return;
+    }
+    // Deploy dengan ETH lebih besar untuk dapat share layak
+    const pool        = parseFloat(STATE.totalDeployed || '0');
+    const avgBlock    = pool / 25;
+    const myEth       = Math.min(avgBlock * (CONFIG.WHALE_MATCH_PCT / 100), parseFloat(CONFIG.ETH_PER_ROUND) * 5).toFixed(6);
+    const blocks      = [0, 8, 16]; // spread 3 blocks
+    STATE.lastDeploy  = { blocks, ethAmount: myEth, mode: 'WHALE_RIDER' };
+    STATE.roundsPlayed++;
+    const totalEth    = (parseFloat(myEth) * blocks.length).toFixed(7);
+    log.act(`🐋 Whale Rider deploy [${blocks.join(',')}] × ${myEth} = ${totalEth} ETH`);
+    try {
+      const tx = await gridContract.deploy(blocks, {
+        value: ethers.parseEther(totalEth),
+        gasLimit: BigInt(150_000),
+      });
+      await tx.wait();
+      STATE.deployedThisRound = true;
+      STATE.totalEthSpent += ethers.parseEther(totalEth);
+      log.act(`confirmed ✓`);
+    } catch (e) {
+      if (e.message.includes('AlreadyDeployedThisRound')) STATE.deployedThisRound = true;
+      else log.err(`deploy: ${e.message}`);
+    }
+    return;
+  }
+
+  // ── Step 1: AI pilih blocks (Sniper Sepi mode) ────────────
+  let aiBlocks = [0, 12, 24];
   try {
     const reco = await ai.recommend({
       numBlocks:   3,
@@ -419,7 +492,8 @@ function startHealthServer() {
       res.writeHead(200,{'Content-Type':'application/json'});
       return res.end(JSON.stringify({
         round:STATE.currentRound, beanpot:STATE.beanpotPool,
-        mode:hybrid.currentMode, beanPrice:STATE.beanPrice,
+        mode:hybrid.currentMode, strategy:STATE.currentStrategy,
+        beanPrice:STATE.beanPrice, lastEV:STATE.lastEV,
         wins, rounds, played, skipped, winRate:winRate+'%', playRate:playRate+'%',
         ethSpent:spent, ethWon:wonEth, pnl,
         beanEarned:STATE.totalBeanEarned.toFixed(4), beanValueUsd:beanVal,
@@ -578,8 +652,8 @@ body{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
   </span>
   <span class="status-pill pill-round">Round #${STATE.currentRound||'—'}</span>
   <span class="status-pill pill-bean">🫘 ${parseFloat(STATE.beanpotPool).toFixed(1)} BEAN pot</span>
-  <span class="status-pill pill-round" style="color:${parseFloat(STATE.totalDeployed)>parseFloat(CONFIG.MAX_POOL_ETH)?'#f43f5e':'#38bdf8'}">
-    Pool ${STATE.totalDeployed} ETH ${parseFloat(STATE.totalDeployed)>parseFloat(CONFIG.MAX_POOL_ETH)?'🐋':''}
+  <span class="status-pill pill-round" style="color:${STATE.currentStrategy==='WHALE_RIDER'?'#fb923c':'#38bdf8'}">
+    ${STATE.currentStrategy==='WHALE_RIDER'?'🐋 WHALE RIDER':'🥷 SNIPER SEPI'}
   </span>
 </div>
 
