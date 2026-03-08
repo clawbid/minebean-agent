@@ -430,122 +430,279 @@ function startHealthServer() {
     }
 
     res.writeHead(200,{'Content-Type':'text/html'});
+    const statusColor = STATE.pendingDeploy ? '#f59e0b' : STATE.lastFilterResult?.play ? '#10b981' : '#6b7280';
+    const statusText  = STATE.pendingDeploy ? 'WAITING' : STATE.lastFilterResult?.play ? 'DEPLOYED' : 'SKIPPED';
+    const pnlPositive = parseFloat(pnl) >= 0;
     res.end(`<!DOCTYPE html>
-<html><head><title>🫘 Sniper Sepi</title>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="8">
+<title>MineBean Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+:root{
+  --bg:#080c10;--surface:#0d1117;--border:#1a2332;--border2:#243040;
+  --text:#e2e8f0;--muted:#64748b;--dim:#334155;
+  --green:#10b981;--red:#f43f5e;--gold:#f59e0b;--purple:#a78bfa;--blue:#38bdf8;--orange:#fb923c;
+  --green-bg:#052e16;--red-bg:#1c0a0f;--gold-bg:#1c1404;--purple-bg:#1a1040;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#050608;color:#c0b8a8;font-family:'Courier New',monospace;padding:22px;max-width:900px}
-h1{color:#f0c040;font-size:1.2em;letter-spacing:.06em;margin-bottom:3px}
-.sub{color:#484440;font-size:.68em;margin-bottom:18px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.card{background:#080b12;border:1px solid #0e1520;padding:12px 14px}
-.ct{color:#484440;font-size:.62em;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
-.big{font-size:1.5em;font-weight:bold;line-height:1.1}
-.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #080c12;font-size:.76em}
-.lbl{color:#484440}.val{text-align:right}
-.g{color:#2aff8a}.a{color:#e07820}.gold{color:#f0c040}.r{color:#ff5555}.pu{color:#c084fc}.bl{color:#60a5fa}
-.badge{padding:2px 8px;font-size:.68em;border-radius:2px}
-.b-ok{background:#0e1a0e;color:#2aff8a;border:1px solid #1a3a1a}
-.b-skip{background:#1a0e0e;color:#ff5555;border:1px solid #3a1a1a}
-.b-wait{background:#0e0e1a;color:#60a5fa;border:1px solid #1a1a3a}
-.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
-.cell{padding:5px 2px;text-align:center;font-size:.58em;border:1px solid #0a0d14}
-.cell.ai{border-color:#c084fc;background:#0a0814}
-.cell.target{border-color:#f0c04066}
-.hb{height:2px;margin-top:2px}.hf{height:100%}
-.rr{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #080b12;font-size:.68em;align-items:center}
-.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.dot-played{background:#2aff8a}.dot-skipped{background:#484440}
-</style></head><body>
+html{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:14px;min-height:100vh}
+body{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
 
-<h1>🫘 MineBean — Sniper Sepi Strategy</h1>
-<div class="sub">Tunggu 20s → Filter whale → AI pick sepi block · auto-refresh 8s · <a href="/status" style="color:#2a3040">json</a></div>
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo{width:36px;height:36px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.title{font-size:1.1em;font-weight:700;letter-spacing:-.01em}
+.subtitle{font-size:.75em;color:var(--muted);margin-top:1px;font-family:'JetBrains Mono',monospace}
+.header-right{display:flex;align-items:center;gap:8px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.live-text{font-size:.72em;color:var(--muted);font-family:'JetBrains Mono',monospace}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
 
-<div class="g3">
-  <div class="card">
-    <div class="ct">Filter Status</div>
-    <div class="badge ${STATE.lastFilterResult?.play?'b-ok':STATE.pendingDeploy?'b-wait':'b-skip'}">
-      ${STATE.pendingDeploy ? '⏳ WAITING '+CONFIG.WAIT_SECONDS+'s' : STATE.lastFilterResult?.play ? '✅ PLAYED' : '⏭ SKIPPED'}
+/* Status bar */
+.statusbar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:.72em;font-weight:600;font-family:'JetBrains Mono',monospace;letter-spacing:.03em;border:1px solid}
+.pill-wait{background:#1c1404;color:var(--gold);border-color:#3d2c08}
+.pill-play{background:var(--green-bg);color:var(--green);border-color:#065f46}
+.pill-skip{background:#111827;color:var(--muted);border-color:var(--border2)}
+.pill-round{background:var(--surface);color:var(--blue);border-color:var(--border2)}
+.pill-bean{background:#0f172a;color:var(--purple);border-color:#312e81}
+
+/* KPI grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-green::before{background:linear-gradient(90deg,var(--green),transparent)}
+.kpi-red::before{background:linear-gradient(90deg,var(--red),transparent)}
+.kpi-gold::before{background:linear-gradient(90deg,var(--gold),transparent)}
+.kpi-purple::before{background:linear-gradient(90deg,var(--purple),transparent)}
+.kpi-blue::before{background:linear-gradient(90deg,var(--blue),transparent)}
+.kpi-label{font-size:.65em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:500}
+.kpi-value{font-size:1.5em;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1;letter-spacing:-.02em}
+.kpi-sub{font-size:.68em;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace}
+
+/* Main grid */
+.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:700px){.main-grid{grid-template-columns:1fr}}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.card-title{font-size:.68em;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title span{color:var(--border2)}
+
+/* Stats rows */
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:.8em}
+.stat-row:last-child{border-bottom:none;padding-bottom:0}
+.stat-label{color:var(--muted)}
+.stat-value{font-family:'JetBrains Mono',monospace;font-weight:500}
+.c-green{color:var(--green)}.c-red{color:var(--red)}.c-gold{color:var(--gold)}.c-purple{color:var(--purple)}.c-blue{color:var(--blue)}.c-orange{color:var(--orange)}.c-muted{color:var(--muted)}
+
+/* 5x5 Grid */
+.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.cell{border-radius:6px;padding:6px 3px;text-align:center;border:1px solid var(--border);background:#0a0f15;transition:border-color .2s;position:relative}
+.cell-num{font-size:.6em;color:var(--dim);font-family:'JetBrains Mono',monospace;margin-bottom:2px}
+.cell-eth{font-size:.65em;font-family:'JetBrains Mono',monospace;color:var(--muted);min-height:12px}
+.cell-wins{font-size:.6em;color:var(--gold-bg);margin-top:1px;font-family:'JetBrains Mono',monospace}
+.cell-bar{height:2px;background:var(--border);border-radius:1px;margin-top:3px;overflow:hidden}
+.cell-fill{height:100%;border-radius:1px;background:var(--border2);transition:width .3s}
+.cell-tag{font-size:.55em;font-weight:700;letter-spacing:.04em;margin-top:2px}
+.cell.is-ai{border-color:#7c3aed;background:#0f0a1e}
+.cell.is-ai .cell-tag{color:#a78bfa}
+.cell.is-target{border-color:#d97706;background:#130f02}
+.cell.is-target .cell-tag{color:#f59e0b}
+.cell.is-ai.is-target{border-color:#a78bfa;background:#120e20}
+
+/* Recent rounds */
+.round-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:.78em}
+.round-row:last-child{border-bottom:none;padding-bottom:0}
+.r-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.r-dot-play{background:var(--green)}.r-dot-skip{background:var(--dim)}
+.r-id{color:var(--muted);font-family:'JetBrains Mono',monospace;min-width:52px;font-size:.9em}
+.r-block{color:var(--text);font-family:'JetBrains Mono',monospace}
+.r-win{color:var(--green);font-weight:600;margin-left:auto}
+.r-lose{color:var(--dim);margin-left:auto}
+.r-skip-label{color:var(--dim);font-size:.9em}
+.r-bean{color:var(--orange);margin-left:4px}
+
+/* AI box */
+.ai-box{background:#0a0814;border:1px solid #2d1b69;border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.ai-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ai-badge{background:#1e1040;color:var(--purple);font-size:.65em;padding:2px 8px;border-radius:4px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.ai-conf{font-size:.65em;color:var(--muted)}
+.ai-blocks{font-family:'JetBrains Mono',monospace;color:var(--gold);font-size:.9em;font-weight:600;margin-bottom:4px}
+.ai-reasoning{font-size:.75em;color:#94a3b8;line-height:1.5}
+
+/* Filter reason */
+.filter-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.75em;display:flex;align-items:flex-start;gap:8px}
+.filter-icon{flex-shrink:0;margin-top:1px}
+.filter-text{color:var(--muted);line-height:1.5;font-family:'JetBrains Mono',monospace}
+
+/* Bottom grid */
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:700px){.bottom-grid{grid-template-columns:1fr}}
+
+/* Footer */
+.footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:gap}
+.footer-left{font-size:.68em;color:var(--dim);font-family:'JetBrains Mono',monospace}
+.footer-links{display:flex;gap:12px}
+.footer-links a{font-size:.68em;color:var(--dim);text-decoration:none;font-family:'JetBrains Mono',monospace}
+.footer-links a:hover{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">🫘</div>
+    <div>
+      <div class="title">MineBean Agent</div>
+      <div class="subtitle">Sniper Sepi · Base Mainnet · ${CONFIG.AI_MODEL}</div>
     </div>
-    <div style="font-size:.62em;color:#484440;margin-top:6px">${STATE.lastFilterResult?.reason?.slice(0,60)||'—'}</div>
   </div>
-  <div class="card">
-    <div class="ct">Round</div>
-    <div class="big gold">#${STATE.currentRound||'—'}</div>
-    <div style="font-size:.7em;margin-top:4px">Beanpot: <span class="a">${parseFloat(STATE.beanpotPool).toFixed(1)} BEAN</span></div>
-    <div style="font-size:.7em">Pool: <span>${STATE.totalDeployed} ETH</span></div>
-  </div>
-  <div class="card">
-    <div class="ct">BEAN Earned</div>
-    <div class="big gold">${STATE.totalBeanEarned.toFixed(3)}</div>
-    <div style="font-size:.7em;margin-top:4px">≈ <span class="g">$${beanVal}</span> @ $${STATE.beanPrice.priceUsd||'?'}</div>
+  <div class="header-right">
+    <div class="live-dot"></div>
+    <div class="live-text">LIVE · refresh 8s</div>
   </div>
 </div>
 
-<div class="g3">
-  <div class="card">
-    <div class="row"><span class="lbl">Total rounds</span><span class="val">${rounds}</span></div>
-    <div class="row"><span class="lbl">Played</span><span class="val g">${played} (${playRate}%)</span></div>
-    <div class="row"><span class="lbl">Skipped</span><span class="val" style="color:#484440">${skipped}</span></div>
-    <div class="row"><span class="lbl">Wins</span><span class="val g">${wins}</span></div>
-    <div class="row"><span class="lbl">Win rate</span><span class="val g">${winRate}%</span></div>
+<!-- Status pills -->
+<div class="statusbar">
+  <span class="status-pill ${STATE.pendingDeploy?'pill-wait':STATE.lastFilterResult?.play?'pill-play':'pill-skip'}">
+    ${STATE.pendingDeploy?'⏳ WAITING '+CONFIG.WAIT_SECONDS+'s':STATE.lastFilterResult?.play?'✅ DEPLOYED':'⏭ SKIPPED'}
+  </span>
+  <span class="status-pill pill-round">Round #${STATE.currentRound||'—'}</span>
+  <span class="status-pill pill-bean">🫘 ${parseFloat(STATE.beanpotPool).toFixed(1)} BEAN pot</span>
+  <span class="status-pill pill-round" style="color:${parseFloat(STATE.totalDeployed)>parseFloat(CONFIG.MAX_POOL_ETH)?'#f43f5e':'#38bdf8'}">
+    Pool ${STATE.totalDeployed} ETH ${parseFloat(STATE.totalDeployed)>parseFloat(CONFIG.MAX_POOL_ETH)?'🐋':''}
+  </span>
+</div>
+
+<!-- KPI row -->
+<div class="kpi-grid">
+  <div class="kpi kpi-gold">
+    <div class="kpi-label">BEAN Earned</div>
+    <div class="kpi-value c-gold">${STATE.totalBeanEarned.toFixed(3)}</div>
+    <div class="kpi-sub">≈ $${beanVal} · $${STATE.beanPrice.priceUsd||'?'}/BEAN</div>
   </div>
-  <div class="card">
-    <div class="row"><span class="lbl">ETH spent</span><span class="val r">−${spent}</span></div>
-    <div class="row"><span class="lbl">ETH won</span><span class="val g">+${wonEth}</span></div>
-    <div class="row"><span class="lbl">ETH PNL</span><span class="val ${parseFloat(pnl)>=0?'g':'r'}">${parseFloat(pnl)>=0?'+':''}${pnl}</span></div>
-    <div class="row"><span class="lbl">Pending ETH</span><span class="val a">${STATE.pendingETH}</span></div>
-    <div class="row"><span class="lbl">Pending BEAN</span><span class="val a">${STATE.pendingBEAN}</span></div>
+  <div class="kpi ${pnlPositive?'kpi-green':'kpi-red'}">
+    <div class="kpi-label">ETH PNL</div>
+    <div class="kpi-value ${pnlPositive?'c-green':'c-red'}">${pnlPositive?'+':''}${pnl}</div>
+    <div class="kpi-sub">spent ${spent} · won ${wonEth}</div>
   </div>
-  <div class="card">
-    <div class="row"><span class="lbl">AI calls</span><span class="val pu">${STATE.aiCallCount}×</span></div>
-    <div class="row"><span class="lbl">Max pool</span><span class="val">${CONFIG.MAX_POOL_ETH} ETH</span></div>
-    <div class="row"><span class="lbl">Max block</span><span class="val">${CONFIG.MAX_BLOCK_ETH} ETH</span></div>
-    <div class="row"><span class="lbl">Min share</span><span class="val">${CONFIG.MIN_SHARE_PCT}%</span></div>
-    <div class="row"><span class="lbl">Wait</span><span class="val">${CONFIG.WAIT_SECONDS}s</span></div>
+  <div class="kpi kpi-blue">
+    <div class="kpi-label">Win Rate</div>
+    <div class="kpi-value c-blue">${winRate}%</div>
+    <div class="kpi-sub">${wins} wins of ${played} played</div>
+  </div>
+  <div class="kpi kpi-purple">
+    <div class="kpi-label">Play Rate</div>
+    <div class="kpi-value c-purple">${playRate}%</div>
+    <div class="kpi-sub">${played} played · ${skipped} skipped</div>
   </div>
 </div>
 
-${reco?`<div class="card" style="margin-bottom:8px;font-size:.76em">
-  <span style="color:#c084fc">[AI ${reco.source}/${reco.confidence}]</span>
-  <span class="gold"> [${reco.blocks?.join(',')}]</span>
-  <span style="color:#c0b8a8"> — ${reco.reasoning}</span>
+<!-- AI Recommendation -->
+${reco?`
+<div class="ai-box">
+  <div class="ai-header">
+    <span class="ai-badge">AI ${reco.source?.toUpperCase()}</span>
+    <span class="ai-conf">${reco.confidence?.toUpperCase()} confidence · ${reco.history||'?'} rounds history</span>
+  </div>
+  <div class="ai-blocks">Blocks [${reco.blocks?.join(', ')}]</div>
+  <div class="ai-reasoning">${reco.reasoning||'—'}</div>
 </div>`:''}
 
-<div class="g2">
+<!-- Filter reason -->
+<div class="filter-box">
+  <span class="filter-icon">${STATE.pendingDeploy?'⏳':STATE.lastFilterResult?.play?'✅':'⏭'}</span>
+  <span class="filter-text">${STATE.lastFilterResult?.reason||'Menunggu round baru...'}</span>
+</div>
+
+<!-- Main grid: heatmap + recent -->
+<div class="main-grid">
   <div class="card">
-    <div class="ct">5×5 Heatmap (🟣 AI pick)</div>
-    <div class="grid5" style="margin-top:6px">
+    <div class="card-title">5×5 Grid Heatmap <span>· 🟣 AI pick · 🟡 deployed</span></div>
+    <div class="grid5">
       ${Array.from({length:25},(_,i)=>{
-        const b   = STATE.gridBlocks[i]||{};
-        const dep = parseFloat(b.deployedFormatted||'0');
-        const w   = heat[i]||0;
-        const pct = Math.round(w/maxW*100);
+        const b    = STATE.gridBlocks[i]||{};
+        const dep  = parseFloat(b.deployedFormatted||'0');
+        const w    = heat[i]||0;
+        const pct  = Math.round(w/maxW*100);
         const isAI = reco?.blocks?.includes(i);
         const isTgt= STATE.lastDeploy?.blocks?.includes(i);
-        const hcol = `hsl(38,${15+pct*.4}%,${10+pct*.18}%)`;
-        return `<div class="cell ${isAI?'ai':''} ${isTgt?'target':''}">
-<div style="color:#484440">#${i}</div>
-<div style="color:${dep>0?'#c0b8a8':'#181410'}">${dep>0?dep.toFixed(4):'·'}</div>
-<div style="color:#f0c04077">${w>0?w+'w':''}</div>
-<div class="hb"><div class="hf" style="width:${pct}%;background:${hcol}"></div></div>
-${isAI?'<div style="color:#c084fc;font-size:.9em">AI</div>':''}
+        const fillColor = pct>60?'#d97706':pct>30?'#7c3aed':'#1e3a5f';
+        const ethColor  = dep>0?(dep>0.01?'#f43f5e':dep>0.005?'#f59e0b':'#64748b'):'#1e293b';
+        return `<div class="cell ${isAI?'is-ai':''} ${isTgt?'is-target':''}">
+  <div class="cell-num">#${i}</div>
+  <div class="cell-eth" style="color:${ethColor}">${dep>0?dep.toFixed(4):'·'}</div>
+  <div class="cell-bar"><div class="cell-fill" style="width:${pct}%;background:${fillColor}"></div></div>
+  <div class="cell-tag">${isAI&&isTgt?'AI+D':isAI?'AI':isTgt?'DEP':w>0?w+'w':''}</div>
 </div>`;}).join('')}
     </div>
   </div>
 
   <div class="card">
-    <div class="ct">Recent Rounds</div>
+    <div class="card-title">Recent Rounds</div>
+    ${STATE.recentResults.length===0?'<div style="color:var(--muted);font-size:.8em;text-align:center;padding:20px 0">Menunggu round pertama...</div>':''}
     ${STATE.recentResults.slice(0,15).map(r=>`
-    <div class="rr">
-      <div class="dot ${r.played?'dot-played':'dot-skipped'}"></div>
-      <span style="color:#484440">R#${r.roundId}</span>
-      ${r.played?`<span>blk <span class="gold">${r.winningBlock}</span></span>`:'<span style="color:#2a2620">skipped</span>'}
-      <span style="color:${r.won?'#2aff8a':'#2a2620'}">${r.won?'✓ WIN':r.played?'—':''}</span>
-      ${r.beanpot?'<span class="a">🫘</span>':''}
+    <div class="round-row">
+      <div class="r-dot ${r.played?'r-dot-play':'r-dot-skip'}"></div>
+      <span class="r-id">R#${r.roundId}</span>
+      ${r.played
+        ? `<span class="r-block">blk <b>${r.winningBlock}</b></span>`
+        : `<span class="r-skip-label">skipped</span>`}
+      ${r.beanpot?`<span class="r-bean">🫘</span>`:''}
+      ${r.won
+        ? `<span class="r-win">✓ WIN</span>`
+        : r.played?`<span class="r-lose">—</span>`:''}
     </div>`).join('')}
+  </div>
+</div>
+
+<!-- Bottom 3-col -->
+<div class="bottom-grid">
+  <div class="card">
+    <div class="card-title">Performance</div>
+    <div class="stat-row"><span class="stat-label">Total Rounds</span><span class="stat-value">${rounds}</span></div>
+    <div class="stat-row"><span class="stat-label">Played</span><span class="stat-value c-green">${played}</span></div>
+    <div class="stat-row"><span class="stat-label">Skipped</span><span class="stat-value c-muted">${skipped}</span></div>
+    <div class="stat-row"><span class="stat-label">Wins</span><span class="stat-value c-green">${wins}</span></div>
+    <div class="stat-row"><span class="stat-label">AI Calls</span><span class="stat-value c-purple">${STATE.aiCallCount}×</span></div>
+    <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-value">${uptime}m</span></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Financials</div>
+    <div class="stat-row"><span class="stat-label">ETH Spent</span><span class="stat-value c-red">−${spent}</span></div>
+    <div class="stat-row"><span class="stat-label">ETH Won</span><span class="stat-value c-green">+${wonEth}</span></div>
+    <div class="stat-row"><span class="stat-label">ETH PNL</span><span class="stat-value ${pnlPositive?'c-green':'c-red'}">${pnlPositive?'+':''}${pnl}</span></div>
+    <div class="stat-row"><span class="stat-label">Pending ETH</span><span class="stat-value c-orange">${STATE.pendingETH}</span></div>
+    <div class="stat-row"><span class="stat-label">BEAN Earned</span><span class="stat-value c-gold">${STATE.totalBeanEarned.toFixed(4)}</span></div>
+    <div class="stat-row"><span class="stat-label">Pending BEAN</span><span class="stat-value c-orange">${STATE.pendingBEAN}</span></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Filter Config</div>
+    <div class="stat-row"><span class="stat-label">Max Pool</span><span class="stat-value">${CONFIG.MAX_POOL_ETH} ETH</span></div>
+    <div class="stat-row"><span class="stat-label">Max Block</span><span class="stat-value">${CONFIG.MAX_BLOCK_ETH} ETH</span></div>
+    <div class="stat-row"><span class="stat-label">Min Share</span><span class="stat-value">${CONFIG.MIN_SHARE_PCT}%</span></div>
+    <div class="stat-row"><span class="stat-label">Wait Time</span><span class="stat-value">${CONFIG.WAIT_SECONDS}s</span></div>
+    <div class="stat-row"><span class="stat-label">Force Beanpot</span><span class="stat-value c-gold">${CONFIG.FORCE_PLAY_BEANPOT} BEAN</span></div>
+    <div class="stat-row"><span class="stat-label">ETH/Block</span><span class="stat-value">${CONFIG.ETH_PER_ROUND}</span></div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <div class="footer-left">wallet ${CONFIG.AGENT_ADDRESS?.slice(0,6)}...${CONFIG.AGENT_ADDRESS?.slice(-4)} · Base Mainnet</div>
+  <div class="footer-links">
+    <a href="/health">health</a>
+    <a href="/status">json</a>
+    <a href="https://minebean.com" target="_blank">minebean.com</a>
   </div>
 </div>
 
