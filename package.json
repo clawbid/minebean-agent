@@ -1,0 +1,19 @@
+{
+  "name": "minebean-auto-agent",
+  "version": "1.0.0",
+  "description": "Auto mining agent for minebean.com — deploys to Base grid every 60s round",
+  "main": "index.js",
+  "scripts": {
+    "start":  "node index.js",
+    "dev":    "DEBUG=1 node index.js",
+    "pm2":    "pm2 start index.js --name minebean-agent --restart-delay 3000",
+    "logs":   "pm2 logs minebean-agent",
+    "status": "pm2 status minebean-agent"
+  },
+  "dependencies": {
+    "dotenv":      "^16.4.5",
+    "ethers":      "^6.13.0",
+    "eventsource": "^2.0.2"
+  },
+  "engines": { "node": ">=18.0.0" }
+}
